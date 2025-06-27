@@ -23,6 +23,7 @@
             object-fit: contain;
             border-radius: 5px;
             margin-bottom: 1rem;
+            background-color: #f8f9fa;
         }
         .thumbnail {
             width: 80px;
@@ -47,6 +48,19 @@
         .btn-buy:hover {
             background-color: #218838;
         }
+        .loading-spinner {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid rgba(0,0,0,0.1);
+            border-radius: 50%;
+            border-top-color: #3498db;
+            animation: spin 1s ease-in-out infinite;
+            margin-left: 10px;
+        }
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
     </style>
 </head>
 <body>
@@ -69,6 +83,9 @@
                     <h3 id="product-price" class="text-success mb-4"></h3>
                     <p id="product-description" class="mb-4"></p>
                     <a id="buy-btn" href="#" class="btn btn-buy btn-lg">Buy Now</a>
+                    <div id="loading" style="display: none;">
+                        <span class="loading-spinner"></span> Loading product...
+                    </div>
                 </div>
             </div>
         </div>
@@ -87,8 +104,15 @@
             }
             
             function fetchProductDetails(id) {
+                document.getElementById('loading').style.display = 'block';
+                
                 fetch(`/api/products/${id}`)
-                    .then(response => response.json())
+                    .then(response => {
+                        if (!response.ok) {
+                            throw new Error('Product not found');
+                        }
+                        return response.json();
+                    })
                     .then(product => {
                         document.getElementById('product-name').textContent = product.name;
                         document.getElementById('product-price').textContent = 'Rp ' + product.price.toLocaleString();
@@ -102,6 +126,7 @@
                         
                         if (product.images && product.images.length > 0) {
                             mainImage.src = `/uploads/${product.images[0]}`;
+                            thumbnailsContainer.innerHTML = '';
                             
                             product.images.forEach((image, index) => {
                                 const thumbnail = document.createElement('img');
@@ -118,9 +143,11 @@
                                 thumbnailsContainer.appendChild(thumbnail);
                             });
                         }
+                        
+                        document.getElementById('loading').style.display = 'none';
                     })
                     .catch(error => {
-                        console.error('Error fetching product details:', error);
+                        console.error('Error:', error);
                         window.location.href = 'index.html';
                     });
             }
