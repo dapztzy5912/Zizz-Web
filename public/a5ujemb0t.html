@@ -28,6 +28,46 @@
         .btn-action {
             margin-right: 5px;
         }
+        .loading-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0,0,0,0.5);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+            display: none;
+        }
+        .spinner {
+            width: 50px;
+            height: 50px;
+            border: 5px solid #f3f3f3;
+            border-top: 5px solid #3498db;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        .notification {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            padding: 15px 25px;
+            background-color: #28a745;
+            color: white;
+            border-radius: 5px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+            z-index: 1000;
+            display: none;
+        }
+        .notification.error {
+            background-color: #dc3545;
+        }
     </style>
 </head>
 <body>
@@ -84,6 +124,11 @@
         </div>
     </div>
 
+    <div class="loading-overlay" id="loading-overlay">
+        <div class="spinner"></div>
+    </div>
+    <div class="notification" id="notification">Upload Complete!</div>
+
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script>
         document.addEventListener('DOMContentLoaded', function() {
@@ -91,6 +136,8 @@
             const productList = document.getElementById('product-list');
             const imagePreviewContainer = document.getElementById('image-preview-container');
             const cancelBtn = document.getElementById('cancel-btn');
+            const loadingOverlay = document.getElementById('loading-overlay');
+            const notification = document.getElementById('notification');
             let products = [];
             let editMode = false;
             let currentEditId = null;
@@ -99,7 +146,21 @@
 
             document.getElementById('product-images').addEventListener('change', function(e) {
                 imagePreviewContainer.innerHTML = '';
-                Array.from(e.target.files).forEach(file => {
+                const files = e.target.files;
+                if (files.length > 10) {
+                    showNotification('Maximum 10 images allowed', true);
+                    e.target.value = '';
+                    return;
+                }
+                
+                Array.from(files).forEach(file => {
+                    if (!file.type.match('image.*')) {
+                        showNotification('Only image files are allowed', true);
+                        e.target.value = '';
+                        imagePreviewContainer.innerHTML = '';
+                        return;
+                    }
+                    
                     const reader = new FileReader();
                     reader.onload = function(event) {
                         const img = document.createElement('img');
@@ -119,6 +180,11 @@
                 const description = document.getElementById('product-description').value;
                 const imageInput = document.getElementById('product-images');
                 
+                if (!name || !price || imageInput.files.length === 0) {
+                    showNotification('Please fill all required fields', true);
+                    return;
+                }
+                
                 if (editMode) {
                     updateProduct(currentEditId, name, price, description, imageInput.files);
                 } else {
@@ -130,6 +196,23 @@
                 resetForm();
             });
 
+            function showLoading() {
+                loadingOverlay.style.display = 'flex';
+            }
+
+            function hideLoading() {
+                loadingOverlay.style.display = 'none';
+            }
+
+            function showNotification(message, isError = false) {
+                notification.textContent = message;
+                notification.className = isError ? 'notification error' : 'notification';
+                notification.style.display = 'block';
+                setTimeout(() => {
+                    notification.style.display = 'none';
+                }, 3000);
+            }
+
             function fetchProducts() {
                 fetch('/api/products')
                     .then(response => response.json())
@@ -137,11 +220,20 @@
                         products = data;
                         renderProductList();
                     })
-                    .catch(error => console.error('Error fetching products:', error));
+                    .catch(error => {
+                        console.error('Error fetching products:', error);
+                        showNotification('Error loading products', true);
+                    });
             }
 
             function renderProductList() {
                 productList.innerHTML = '';
+                
+                if (products.length === 0) {
+                    productList.innerHTML = '<tr><td colspan="4" class="text-center">No products available</td></tr>';
+                    return;
+                }
+                
                 products.forEach(product => {
                     const row = document.createElement('tr');
                     
@@ -190,6 +282,7 @@
             }
 
             function addProduct(name, price, description, imageFiles) {
+                showLoading();
                 const formData = new FormData();
                 formData.append('name', name);
                 formData.append('price', price);
@@ -203,15 +296,27 @@
                     method: 'POST',
                     body: formData
                 })
-                .then(response => response.json())
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error('Network response was not ok');
+                    }
+                    return response.json();
+                })
                 .then(() => {
                     fetchProducts();
                     resetForm();
+                    hideLoading();
+                    showNotification('Product uploaded successfully!');
                 })
-                .catch(error => console.error('Error adding product:', error));
+                .catch(error => {
+                    console.error('Error adding product:', error);
+                    hideLoading();
+                    showNotification('Upload failed!', true);
+                });
             }
 
             function updateProduct(id, name, price, description, imageFiles) {
+                showLoading();
                 const formData = new FormData();
                 formData.append('name', name);
                 formData.append('price', price);
@@ -228,23 +333,47 @@
                     method: 'POST',
                     body: formData
                 })
-                .then(response => response.json())
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error('Network response was not ok');
+                    }
+                    return response.json();
+                })
                 .then(() => {
                     fetchProducts();
                     resetForm();
+                    hideLoading();
+                    showNotification('Product updated successfully!');
                 })
-                .catch(error => console.error('Error updating product:', error));
+                .catch(error => {
+                    console.error('Error updating product:', error);
+                    hideLoading();
+                    showNotification('Update failed!', true);
+                });
             }
 
             function deleteProduct(id) {
                 if (confirm('Are you sure you want to delete this product?')) {
+                    showLoading();
                     fetch(`/api/products/${id}`, {
                         method: 'DELETE'
                     })
+                    .then(response => {
+                        if (!response.ok) {
+                            throw new Error('Network response was not ok');
+                        }
+                        return response.json();
+                    })
                     .then(() => {
                         fetchProducts();
+                        hideLoading();
+                        showNotification('Product deleted successfully!');
                     })
-                    .catch(error => console.error('Error deleting product:', error));
+                    .catch(error => {
+                        console.error('Error deleting product:', error);
+                        hideLoading();
+                        showNotification('Delete failed!', true);
+                    });
                 }
             }
 
@@ -273,6 +402,7 @@
                 currentEditId = null;
                 document.getElementById('submit-btn').textContent = 'Add Product';
                 cancelBtn.style.display = 'none';
+                document.getElementById('product-images').required = true;
             }
         });
     </script>
